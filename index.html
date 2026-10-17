@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tarde de Bingo · Cantador</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Paleta: verde #5DE281 · grafito #1F2321 · blanco #FFFFFF
+   Pensado para TV 16:9: todo cabe en una pantalla, sin scroll.
+   Siempre en claro: la foto tiene fondo blanco y debe fundirse con la página. */
+:root{
+  --bg:#FFFFFF; --panel:#FFFFFF; --ink:#1F2321; --muted:#5b645f; --line:#dfe3e0;
+  --green:#5DE281; --green-soft:#c9f5d5;
+  --head-bg:#1F2321; --head-fg:#5DE281;
+  --called-bg:#1F2321; --called-fg:#FFFFFF;
+  --sans:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --pad:clamp(14px,2.2vw,40px);
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden}
+
+/* ---------- Layout: 1/3 foto + botones · 2/3 número + cuadrícula ---------- */
+.app{height:100dvh;display:grid;grid-template-columns:1fr 2fr;gap:var(--pad);padding:var(--pad)}
+
+.side{position:relative;display:flex;flex-direction:column;gap:var(--pad);min-height:0;border-right:3px solid var(--ink);padding-right:var(--pad)}
+/* Modo limpio: sin botonera, la foto queda sola y centrada */
+.clean .btns{display:none}
+.hide-btn{position:absolute;left:0;top:0;z-index:2;background:none;border:0;padding:.2em .3em;
+  font:500 clamp(.7rem,.9vw,1rem) var(--mono);color:var(--line);transition:color .2s}
+.hide-btn:hover,.hide-btn:focus-visible{color:var(--muted)}
+.photo{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.photo img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+
+.main{display:flex;flex-direction:column;min-height:0;min-width:0}
+
+/* ---------- Botonera ---------- */
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:clamp(8px,1vw,16px)}
+button{font:inherit;cursor:pointer}
+.btn{position:relative;background:var(--panel);color:var(--ink);border:3px solid var(--ink);border-radius:14px;
+  padding:.7em .6em;font-size:clamp(.95rem,1.35vw,1.6rem);font-weight:600;
+  display:flex;flex-direction:column;align-items:center;gap:.25em;
+  transition:transform .35s ease,background .35s ease,box-shadow .35s ease,opacity .35s ease}
+.btn kbd{font:500 .7em var(--mono);color:var(--muted);border:2px solid var(--line);border-radius:6px;padding:.05em .45em}
+.btn:disabled{opacity:.35;cursor:default}
+.btn.primary{background:var(--green);color:#1F2321;box-shadow:0 0 0 5px rgba(93,226,129,.4)}
+.btn.primary kbd{color:#1F2321;border-color:rgba(31,35,33,.3)}
+.btn[aria-pressed="false"]{opacity:.6}
+.btn:focus-visible,.cell:focus-visible{outline:3px solid var(--green);outline-offset:3px}
+/* Efecto visible al pulsar (teclado o clic): se hunde e ilumina, sin prisa */
+.btn.pressed{transform:scale(.92);background:var(--ink);color:#fff;box-shadow:0 0 0 10px rgba(93,226,129,.7)}
+.btn.pressed kbd{color:var(--green);border-color:var(--green)}
+
+/* ---------- Número grande ---------- */
+.stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+.big{font-weight:800;line-height:.95;letter-spacing:-.03em;font-size:clamp(5rem,min(30vh,15vw),26rem);
+  display:flex;gap:.2em;align-items:baseline}
+.big #bigL{color:var(--green);-webkit-text-stroke:.03em var(--ink);paint-order:stroke fill}
+.big.out{animation:bigOut .35s ease-in forwards}
+.big.in{animation:bigIn .8s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes bigOut{to{opacity:0;transform:translateY(-12%) scale(.85)}}
+@keyframes bigIn{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:none}}
+.col-label{margin-top:.2em;font-size:clamp(1.1rem,2.4vw,2.6rem);color:var(--muted)}
+
+.divider{height:3px;background:var(--ink);margin:0 0 clamp(10px,1.6vh,22px);flex:none}
+
+/* ---------- Cuadrícula B-I-N-G-O ---------- */
+.board{display:flex;flex-direction:column;gap:clamp(4px,.6vh,8px);font-family:var(--mono);flex:none}
+.row{display:grid;grid-template-columns:repeat(16,1fr);gap:clamp(4px,.45vw,8px)}
+.h{background:var(--head-bg);color:var(--head-fg);border-radius:8px;display:flex;align-items:center;
+  justify-content:center;font-weight:700;font-size:clamp(1rem,min(2vw,4vh),2.6rem)}
+.cell{background:var(--panel);color:var(--ink);border:2px solid var(--line);border-radius:8px;
+  font:500 clamp(.85rem,min(1.6vw,3.4vh),2.2rem) var(--mono);padding:.35em 0;
+  transition:background .6s ease,color .6s ease,border-color .6s ease}
+.cell.called{background:var(--called-bg);color:var(--called-fg);border-color:var(--called-bg);font-weight:700}
+.cell.current{background:var(--green);color:#1F2321;border:3px solid var(--ink);font-weight:700}
+.cell.flash{animation:flash 1.8s ease-in-out;position:relative;z-index:1}
+@keyframes flash{
+  0%{transform:scale(1);box-shadow:0 0 0 0 rgba(93,226,129,0)}
+  25%{transform:scale(1.35);box-shadow:0 0 0 10px rgba(93,226,129,.75)}
+  50%{transform:scale(1.1);box-shadow:0 0 0 4px rgba(93,226,129,.4)}
+  75%{transform:scale(1.3);box-shadow:0 0 0 10px rgba(93,226,129,.75)}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(93,226,129,0)}
+}
+
+.foot{display:flex;align-items:center;gap:clamp(10px,1.4vw,24px);margin-top:clamp(8px,1.4vh,18px);
+  font:500 clamp(.85rem,1.5vw,1.8rem) var(--mono);color:var(--muted)}
+.foot #count{flex:none}
+
+/* Marquesina de números anteriores: el más reciente entra primero */
+.marquee{flex:1;min-width:0;overflow:hidden;background:var(--ink);border-radius:999px;padding:.4em 0;
+  -webkit-mask:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.marquee-track{display:flex;width:max-content;animation:marquee var(--dur,30s) linear infinite}
+.marquee-track span{flex:none;margin-right:1.6em;color:#fff;font-weight:700;white-space:nowrap}
+.marquee-track span b{color:var(--green);margin-right:.25em}
+.marquee-track span.first{color:var(--green)}
+.marquee-empty{display:block;color:#8a938e;padding:0 1.2em}
+@keyframes marquee{to{transform:translateX(-50%)}}
+
+/* ---------- Modal ---------- */
+dialog{border:0;border-radius:20px;padding:32px;max-width:460px;background:var(--panel);color:var(--ink);
+  box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center;font-size:clamp(1rem,1.4vw,1.5rem)}
+dialog::backdrop{background:rgba(15,20,18,.55)}
+dialog h3{margin:0 0 8px}dialog p{margin:0 0 22px;color:var(--muted)}
+.actions{display:flex;gap:12px;justify-content:center}
+.actions .btn{flex:1}
+
+
+.btn.sd-btn{grid-column:1 / -1;flex-direction:row;justify-content:center;gap:.6em;background:var(--ink);color:var(--green);border-color:var(--ink)}
+.btn.sd-btn kbd{color:var(--green);border-color:rgba(93,226,129,.4)}
+.btn.sd-btn.pressed{background:var(--green);color:var(--ink)}
+
+/* =====================================================================
+   MUERTE SÚBITA · versión liviana: fondo claro, solo bolitas y la tecla.
+   ===================================================================== */
+.sd{--ball:22vh;position:fixed;inset:0;z-index:50;background:var(--bg);color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5vh;
+  overflow:hidden;opacity:0;transition:opacity .3s ease;cursor:default;text-align:center}
+.sd[hidden]{display:none}
+.sd.show{opacity:1}
+
+.sd-count{display:flex;align-items:center;gap:4vw;font:800 min(26vh,18vw)/1 var(--sans);color:var(--ink)}
+.sd-count .arr{font-weight:400;font-size:.45em;color:var(--muted);cursor:pointer;user-select:none;padding:0 .3em}
+.sd-count #sdN{min-width:1.2em;display:inline-block}
+.sd-count #sdN.bump{animation:bump .3s ease}
+@keyframes bump{40%{transform:scale(1.15)}}
+
+.sd[data-state="setup"] .sd-slots{display:none}
+.sd:not([data-state="setup"]) .sd-count{display:none}
+
+/* bolitas */
+.sd-slots{display:flex;flex-wrap:wrap;justify-content:center;gap:3vw}
+.slot{display:flex;flex-direction:column;align-items:center;gap:1.4vh;transition:opacity .5s ease,transform .5s ease;
+  animation:popIn .4s ease backwards}
+@keyframes popIn{from{opacity:0;transform:scale(.8)}}
+.ball{width:var(--ball);height:var(--ball);border-radius:50%;background:#f3f5f4;border:.5vh solid var(--line);color:var(--muted);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono);
+  transition:background .3s,color .3s,border-color .3s,transform .4s cubic-bezier(.3,1.5,.5,1)}
+.ball .bl{font-size:calc(var(--ball)*.16);font-weight:700;line-height:1}
+.ball .bn{font-size:calc(var(--ball)*.36);font-weight:700;line-height:1}
+.slot-lab{font:600 calc(var(--ball)*.14)/1 var(--sans);color:var(--muted)}
+.slot.active .ball{border-color:var(--green)}
+.ball.done{background:var(--ink);color:#fff;border-color:var(--ink);animation:reveal .4s cubic-bezier(.3,1.6,.5,1)}
+@keyframes reveal{50%{transform:scale(1.1)}}
+.slot.lose{opacity:.3;transform:scale(.9)}
+.slot.win .ball{background:var(--green);color:var(--ink);border-color:var(--green);transform:scale(1.15)}
+.slot.win .slot-lab{color:var(--ink)}
+
+.sd-hint{font:500 clamp(.9rem,1.6vw,1.6rem) var(--mono);color:var(--muted)}
+.sd-hint kbd{font:inherit;color:var(--ink);border:2px solid var(--line);border-radius:6px;padding:.05em .45em}
+
+.cf{position:absolute;top:-5vh;z-index:4;pointer-events:none;animation:fall linear forwards}
+@keyframes fall{to{transform:translate(var(--dx),115vh) rotate(var(--rot))}}
+
+@media (prefers-reduced-motion:reduce){
+  .big.in,.big.out,.cell.flash{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="photo">
+      <img src="foto.jpg" alt="Made in Talca presenta Tarde de Bingo">
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="nextBtn">Siguiente <kbd>Espacio</kbd></button>
+      <button class="btn" id="undoBtn">Deshacer <kbd>←</kbd></button>
+      <button class="btn" id="newBtn">Nueva partida <kbd>N</kbd></button>
+      <button class="btn" id="voiceBtn" aria-pressed="true"><span id="voiceTxt">🔊 Voz</span> <kbd>V</kbd></button>
+      <button class="btn sd-btn" id="sdBtn">Muerte súbita <kbd>M</kbd></button>
+    </div>
+    <button class="hide-btn" id="hideBtn" title="Ocultar/mostrar botones (O)">◐ O</button>
+  </aside>
+
+  <main class="main">
+    <section class="stage" aria-live="polite">
+      <div class="big" id="big"><span id="bigL">–</span><span id="bigN">--</span></div>
+      <div class="col-label" id="colLabel">Pulsa Espacio para empezar</div>
+    </section>
+
+    <div class="divider"></div>
+
+    <section>
+      <div class="board" id="board"></div>
+      <div class="foot">
+        <div class="marquee" id="last" aria-label="Números anteriores"></div>
+        <span id="count">Cantados 0 de 75</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="newDlg">
+  <h3>¿Empezar nueva partida?</h3>
+  <p>Se borrarán todos los números cantados.</p>
+  <div class="actions">
+    <button class="btn" id="newCancel">Cancelar <kbd>Esc</kbd></button>
+    <button class="btn primary" id="newOk">Nueva partida <kbd>Enter</kbd></button>
+  </div>
+</dialog>
+
+<!-- Muerte súbita: desempate a la bolita más alta -->
+<div class="sd" id="sd" data-state="setup" hidden>
+  <div class="sd-count"><span class="arr" id="sdMinus">‹</span><span id="sdN">2</span><span class="arr" id="sdPlus">›</span></div>
+  <div class="sd-slots" id="sdSlots"></div>
+  <div class="sd-hint" id="sdHint"></div>
+</div>
+
+<script>
+const LETTERS = ['B','I','N','G','O'];
+const letterOf = n => LETTERS[Math.floor((n - 1) / 15)];
+const $ = id => document.getElementById(id);
+
+const PRESS_MS = 700;   // cuánto se ve el botón "apretado"
+const LOCK_MS  = 1800;  // pausa mínima entre números para que el público alcance a verlos
+
+let called = [];        // números en orden cronológico
+let voiceOn = true;
+let busy = false;       // evita cantar dos números seguidos sin que se note
+const cells = {};
+
+/* Construye las 5 filas: encabezado + 15 números */
+LETTERS.forEach((L, r) => {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<div class="h">${L}</div>`;
+  for (let n = r * 15 + 1; n <= r * 15 + 15; n++) {
+    const b = document.createElement('button');
+    b.className = 'cell'; b.textContent = n; b.tabIndex = -1;
+    b.setAttribute('aria-label', `${L} ${n}`);
+    b.addEventListener('click', () => call(n));   // también se puede cantar a mano
+    cells[n] = b; row.appendChild(b);
+  }
+  $('board').appendChild(row);
+});
+
+/* Marca visualmente el botón como presionado */
+function press(btn) {
+  btn.classList.add('pressed');
+  setTimeout(() => btn.classList.remove('pressed'), PRESS_MS);
+}
+
+function call(n) {
+  if (busy || called.includes(n)) return;
+  busy = true;
+  called.push(n);
+  showBig(() => { speak(n); flash(n); });
+  setTimeout(() => { busy = false; render(); }, LOCK_MS);
+}
+function nextNumber() {
+  const left = [];
+  for (let n = 1; n <= 75; n++) if (!called.includes(n)) left.push(n);
+  if (left.length) call(left[Math.floor(Math.random() * left.length)]);
+}
+function undo() {
+  if (busy || !called.length) return;
+  called.pop();
+  showBig();
+}
+function reset() { called = []; showBig(); }
+
+/* Sale el número anterior, entra el nuevo */
+function showBig(after) {
+  const big = $('big');
+  big.classList.remove('in');
+  big.classList.add('out');
+  setTimeout(() => {
+    big.classList.remove('out');
+    render();
+    void big.offsetWidth;          // reinicia la animación
+    big.classList.add('in');
+    if (after) after();
+  }, 350);
+}
+
+function flash(n) {
+  const c = cells[n];
+  c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+  setTimeout(() => c.classList.remove('flash'), 1800);
+}
+
+/* Marquesina: el contenido va dos veces para que el bucle no tenga costura,
+   y se repite si hay pocos números para que siempre llene el ancho. */
+let marqueeKey = '';
+function renderMarquee(prev) {
+  const key = prev.join(',');
+  if (key === marqueeKey) return;   // no reiniciar la animación si nada cambió
+  marqueeKey = key;
+  const el = $('last');
+  if (!prev.length) { el.innerHTML = '<span class="marquee-empty">Anteriores: –</span>'; return; }
+  const items = prev.map((n, k) => `<span${k === 0 ? ' class="first"' : ''}><b>${letterOf(n)}</b>${n}</span>`);
+  let half = [];
+  while (half.length < 14) half = half.concat(items);
+  el.innerHTML = `<div class="marquee-track" style="--dur:${half.length * 1.6}s">${half.join('')}${half.join('')}</div>`;
+}
+
+function render() {
+  const last = called[called.length - 1];
+  for (let n = 1; n <= 75; n++) {
+    cells[n].classList.toggle('called', called.includes(n) && n !== last);
+    cells[n].classList.toggle('current', n === last);
+  }
+  $('bigL').textContent = last ? letterOf(last) : '–';
+  $('bigN').textContent = last || '--';
+  $('colLabel').textContent = last ? `Columna ${letterOf(last)}` : 'Pulsa Espacio para empezar';
+  renderMarquee([...called].reverse().slice(1));
+  $('count').textContent = `Cantados ${called.length} de 75`;
+  $('undoBtn').disabled = !called.length;
+  $('nextBtn').disabled = called.length >= 75;
+}
+
+function speak(n) {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(`${letterOf(n)}, ${n}`);
+  u.lang = 'es-ES'; u.rate = .85; speechSynthesis.speak(u);
+}
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  $('voiceBtn').setAttribute('aria-pressed', voiceOn);
+  $('voiceTxt').textContent = voiceOn ? '🔊 Voz' : '🔇 Voz';
+}
+
+
+/* =====================================================================
+   MUERTE SÚBITA
+   Cada cartón en disputa saca una bolita (sin repetir, del 1 al 75).
+   La más alta gana. Se avanza con Espacio.
+   ===================================================================== */
+const SD_MIN = 2, SD_MAX = 8;
+const sd = { open: false, n: 2, draws: [], i: 0, busy: false, tok: 0 };
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+/* setTimeout que se anula si se cierra o reinicia la muerte súbita */
+function later(fn, ms) { const t = sd.tok; setTimeout(() => { if (t === sd.tok) fn(); }, ms); }
+function hint(html) { $('sdHint').innerHTML = html; }
+
+/* ---- sonido sintetizado (respeta el botón de Voz) ---- */
+let AC;
+function tone(freq, dur, { type = 'triangle', vol = .15, at = 0 } = {}) {
+  if (!voiceOn) return;
+  AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+  const t0 = AC.currentTime + at, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(.001, t0 + dur);
+  o.connect(g).connect(AC.destination); o.start(t0); o.stop(t0 + dur);
+}
+const sfx = {
+  tick: () => tone(1100 + Math.random() * 400, .03, { type: 'square', vol: .04 }),
+  pop:  () => tone(660, .15, { vol: .12 }),
+  win:  () => [523, 659, 784, 1047].forEach((f, k) => tone(f, .6, { vol: .1, at: k * .1 })),
+};
+
+function say(text) {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = 'es-ES'; u.rate = .85; speechSynthesis.speak(u);
+}
+
+/* ---- flujo ---- */
+function sdOpen() {
+  sd.open = true; sd.tok++; sd.busy = false;
+  const el = $('sd');
+  el.dataset.state = 'setup'; el.hidden = false;
+  $('sdN').textContent = sd.n;
+  hint('<kbd>←</kbd> <kbd>→</kbd> cartones · <kbd>Espacio</kbd> empezar');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+}
+function sdClose() {
+  sd.open = false; sd.tok++;
+  const el = $('sd'); el.classList.remove('show');
+  setTimeout(() => { if (!sd.open) { el.hidden = true; el.querySelectorAll('.cf').forEach(c => c.remove()); } }, 300);
+}
+function sdSetN(n) {
+  sd.n = Math.max(SD_MIN, Math.min(SD_MAX, n));
+  const el = $('sdN'); el.textContent = sd.n;
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+  sfx.pop();
+}
+
+function sdStart() {
+  sd.tok++; sd.busy = false; sd.i = 0;
+  const pool = Array.from({ length: 75 }, (_, k) => k + 1);
+  for (let k = pool.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [pool[k], pool[j]] = [pool[j], pool[k]]; }
+  sd.draws = pool.slice(0, sd.n);
+
+  const el = $('sd');
+  el.dataset.state = 'play';
+  el.querySelectorAll('.cf').forEach(c => c.remove());
+  el.style.setProperty('--ball', `min(24vh, ${Math.floor(70 / sd.n)}vw)`);
+  $('sdSlots').innerHTML = sd.draws.map((_, k) =>
+    `<div class="slot" style="animation-delay:${k * .06}s">
+       <div class="ball"><span class="bl">&nbsp;</span><span class="bn">?</span></div>
+       <div class="slot-lab">Cartón ${k + 1}</div>
+     </div>`).join('');
+  sdTurn();
+}
+
+function sdTurn() {
+  [...$('sdSlots').children].forEach((s, k) => s.classList.toggle('active', k === sd.i));
+  hint('<kbd>Espacio</kbd> sacar bolita');
+}
+
+function sdDraw() {
+  sd.busy = true;
+  const slot = $('sdSlots').children[sd.i], ball = slot.querySelector('.ball');
+  const bl = ball.querySelector('.bl'), bn = ball.querySelector('.bn');
+  const final = sd.draws[sd.i];
+  hint('&nbsp;');
+
+  // Ruleta corta que se va frenando
+  let delay = 40;
+  const spin = () => {
+    const r = 1 + Math.floor(Math.random() * 75);
+    bl.textContent = letterOf(r); bn.textContent = r; sfx.tick();
+    delay *= 1.15;
+    if (delay < 220) return later(spin, delay);
+    ball.classList.add('done');
+    bl.textContent = letterOf(final); bn.textContent = final;
+    sfx.pop(); speak(final);
+    slot.classList.remove('active');
+    sd.i++;
+    if (sd.i < sd.n) { sd.busy = false; sdTurn(); }
+    else later(sdWin, 900);
+  };
+  spin();
+}
+
+function sdWin() {
+  const win = sd.draws.indexOf(Math.max(...sd.draws));
+  [...$('sdSlots').children].forEach((s, j) => s.classList.add(j === win ? 'win' : 'lose'));
+  $('sd').dataset.state = 'winner';
+  sfx.win();
+  later(() => say(`Gana el cartón ${win + 1}`), 700);
+  confetti();
+  hint('<kbd>Espacio</kbd> volver al bingo');
+  sd.busy = false;
+}
+
+function confetti() {
+  const el = $('sd'), colors = ['#5DE281', '#1F2321', '#5DE281', '#c9f5d5'];
+  for (let k = 0; k < 50; k++) {
+    const c = document.createElement('i');
+    const size = .8 + Math.random() * 1.2;
+    c.className = 'cf';
+    Object.assign(c.style, {
+      left: Math.random() * 100 + 'vw', width: size + 'vh', height: (Math.random() < .5 ? size : size * .4) + 'vh',
+      background: pick(colors), borderRadius: Math.random() < .3 ? '50%' : '1px',
+      animationDuration: 3 + Math.random() * 3 + 's', animationDelay: Math.random() * 1 + 's',
+    });
+    c.style.setProperty('--dx', (Math.random() - .5) * 20 + 'vw');
+    c.style.setProperty('--rot', (Math.random() - .5) * 1080 + 'deg');
+    el.appendChild(c);
+  }
+}
+
+/* Acción principal (Espacio / Enter / → / PageDown / clic) según el momento */
+function sdAdvance() {
+  if (sd.busy) return;
+  const state = $('sd').dataset.state;
+  if (state === 'setup') sdStart();
+  else if (state === 'play') sdDraw();
+  else if (state === 'winner') sdClose();
+}
+function sdKey(e) {
+  const k = e.key, state = $('sd').dataset.state;
+  if (k === 'Escape') sdClose();
+  else if ([' ', 'Enter', 'ArrowRight', 'PageDown'].includes(k) && !(state === 'setup' && k === 'ArrowRight')) sdAdvance();
+  else if (state === 'setup' && (k === 'ArrowRight' || k === 'ArrowUp')) sdSetN(sd.n + 1);
+  else if (state === 'setup' && (k === 'ArrowLeft' || k === 'ArrowDown')) sdSetN(sd.n - 1);
+  else if (state === 'setup' && /^[2-8]$/.test(k)) sdSetN(+k);
+  else if (state === 'winner' && (k === 'r' || k === 'R')) sdStart();
+  else return;
+  e.preventDefault();
+}
+
+$('sd').addEventListener('click', sdAdvance);
+$('sdMinus').addEventListener('click', e => { e.stopPropagation(); sdSetN(sd.n - 1); });
+$('sdPlus').addEventListener('click', e => { e.stopPropagation(); sdSetN(sd.n + 1); });
+
+/* Acciones: cada una presiona su botón visualmente y luego actúa */
+const actions = {
+  next:  () => { if (!busy && !$('nextBtn').disabled) { press($('nextBtn')); nextNumber(); } },
+  undo:  () => { if (!busy && !$('undoBtn').disabled) { press($('undoBtn')); undo(); } },
+  new:   () => { press($('newBtn')); setTimeout(() => $('newDlg').showModal(), 300); },
+  voice: () => { press($('voiceBtn')); toggleVoice(); },
+  sudden: () => { press($('sdBtn')); setTimeout(sdOpen, 400); },
+  hide:  () => document.body.classList.toggle('clean'),
+};
+
+$('nextBtn').addEventListener('click', actions.next);
+$('undoBtn').addEventListener('click', actions.undo);
+$('newBtn').addEventListener('click', actions.new);
+$('voiceBtn').addEventListener('click', actions.voice);
+$('sdBtn').addEventListener('click', actions.sudden);
+$('hideBtn').addEventListener('click', actions.hide);
+$('newCancel').addEventListener('click', () => $('newDlg').close());
+$('newOk').addEventListener('click', () => { $('newDlg').close(); reset(); });
+
+/* Teclado (también sirve con presentadores inalámbricos: PageDown / PageUp) */
+const KEYS = {
+  ' ': 'next', Enter: 'next', ArrowRight: 'next', PageDown: 'next',
+  Backspace: 'undo', ArrowLeft: 'undo', PageUp: 'undo',
+  n: 'new', N: 'new',
+  v: 'voice', V: 'voice',
+  m: 'sudden', M: 'sudden',
+  o: 'hide', O: 'hide',
+};
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (sd.open) return sdKey(e);
+  if ($('newDlg').open) {
+    if (e.key === 'Enter') { e.preventDefault(); press($('newOk')); setTimeout(() => $('newOk').click(), 300); }
+    return;                       // Esc lo cierra el propio <dialog>
+  }
+  const act = KEYS[e.key];
+  if (!act) return;
+  e.preventDefault();             // evita el clic nativo del botón con foco
+  actions[act]();
+});
+
+render();
+</script>
+</body>
+</html>
